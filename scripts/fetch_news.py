@@ -2,20 +2,20 @@
 """
 fetch_news.py
 
-Читает config/sources.yaml, парсит RSS каждого источника (feedparser),
-нормализует поля и делает upsert в таблицу news_items в Supabase
-через REST API (PostgREST) с service_role ключом.
+Читает config/sources.yaml, парсит RSS/scraper каждого источника,
+нормализует поля, дедуплицирует и делает upsert в таблицу news_items
+в Supabase через REST API (PostgREST) с service_role ключом.
+Также чистит записи старше RETENTION_DAYS.
 
 Переменные окружения (задаются как GitHub Actions secrets):
     SUPABASE_URL           -- https://xxxx.supabase.co
-    SUPABASE_SERVICE_KEY    -- service_role key (НЕ anon key!)
+    SUPABASE_SERVICE_KEY   -- service_role key (НЕ anon key!)
 
 Запуск:
-    pip install feedparser pyyaml requests
+    pip install feedparser pyyaml requests deep-translator beautifulsoup4
     SUPABASE_URL=... SUPABASE_SERVICE_KEY=... python scripts/fetch_news.py
 """
 
-import hashlib
 import os
 import re
 import sys
@@ -43,6 +43,10 @@ def require_env():
         sys.exit(1)
 
 
+# ---------------------------------------------------------------------------
+# Нормализация / дедупликация
+# ---------------------------------------------------------------------------
+
 def normalize_title(title: str) -> str:
     """Нормализует заголовок для сравнения: убирает регистр, знаки
     препинания, диакритику и лишние пробелы. Нужно, чтобы поймать
@@ -56,25 +60,12 @@ def normalize_title(title: str) -> str:
     return text.strip()
 
 
-def fetch_recent_titles(days: int = 3) -> set[str]:
-    """Подтягивает нормализованные заголовки уже сохранённых новостей за
-    последние N дней -- нужно для дедупликации МЕЖДУ разными запусками
-    (не только внутри одного забега cron), если разные СМИ публикуют
-    один и тот же пресс-релиз не одновременно, а с разницей в час-два."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    endpoint = f"{SUPABASE_URL}/rest/v1/news_items"
-    headers = {
-        "apikey": SUPABASE_SERVICE_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
-    }
-    params = {"select": "title", "published_at": f"gte.{cutoff}"}
-    try:
-        r = requests.get(endpoint, headers=headers, params=params, timeout=30)
-        r.raise_for_status()
-        return {normalize_title(row["title"]) for row in r.json()}
-    except requests.RequestException as e:
-        print(f"WARN: не удалось получить существующие заголовки: {e}")
-        return set()
+def matches_keywords(title: str, excerpt: str, keywords: list[str]) -> bool:
+    """Для широких фидов (Gestión, El Comercio, MINEM, MINAM) фильтруем
+    по ключевым словам, чтобы не заливать таблицу нерелевантным потоком
+    (курс доллара, электричество/топливо и т.п.)."""
+    haystack = f"{title} {excerpt}".lower()
+    return any(kw.lower() in haystack for kw in keywords)
 
 
 def deduplicate_items(items: list[dict], existing_titles: set[str] | None = None) -> list[dict]:
@@ -94,21 +85,11 @@ def deduplicate_items(items: list[dict], existing_titles: set[str] | None = None
     return result
 
 
-def cleanup_old_news():
-    """Удаляет новости старше RETENTION_DAYS -- держит таблицу компактной
-    (важно на лимите 500 MB бесплатного Supabase) и страницу свежей."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)).isoformat()
-    endpoint = f"{SUPABASE_URL}/rest/v1/news_items"
-    headers = {
-        "apikey": SUPABASE_SERVICE_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
-    }
-    params = {"published_at": f"lt.{cutoff}"}
-    r = requests.delete(endpoint, headers=headers, params=params, timeout=30)
-    if r.status_code not in (200, 204):
-        print(f"WARN: cleanup failed [{r.status_code}]: {r.text[:300]}")
-    else:
-        print(f"Очистка: удалены новости старше {RETENTION_DAYS} дней")
+# ---------------------------------------------------------------------------
+# RSS-парсинг
+# ---------------------------------------------------------------------------
+
+def parse_published(entry) -> str | None:
     for key in ("published_parsed", "updated_parsed"):
         val = entry.get(key)
         if val:
@@ -124,16 +105,12 @@ def extract_image(entry) -> str | None:
     if "media_thumbnail" in entry and entry.media_thumbnail:
         return entry.media_thumbnail[0].get("url")
     # иногда картинка зашита в content/summary как <img src="...">
-    import re
-
     html = entry.get("summary", "") or ""
     m = re.search(r'<img[^>]+src="([^"]+)"', html)
     return m.group(1) if m else None
 
 
 def clean_excerpt(entry) -> str:
-    import re
-
     text = entry.get("summary", "") or ""
     text = re.sub(r"<[^>]+>", "", text)  # убрать HTML-теги
     text = text.strip()
@@ -204,6 +181,31 @@ def fetch_source(src: dict) -> list[dict]:
     return items
 
 
+# ---------------------------------------------------------------------------
+# Supabase: чтение существующих заголовков / запись / очистка
+# ---------------------------------------------------------------------------
+
+def fetch_recent_titles(days: int = 3) -> set[str]:
+    """Подтягивает нормализованные заголовки уже сохранённых новостей за
+    последние N дней -- нужно для дедупликации МЕЖДУ разными запусками
+    (не только внутри одного забега cron), если разные СМИ публикуют
+    один и тот же пресс-релиз не одновременно, а с разницей в час-два."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    endpoint = f"{SUPABASE_URL}/rest/v1/news_items"
+    headers = {
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+    }
+    params = {"select": "title", "published_at": f"gte.{cutoff}"}
+    try:
+        r = requests.get(endpoint, headers=headers, params=params, timeout=30)
+        r.raise_for_status()
+        return {normalize_title(row["title"]) for row in r.json()}
+    except requests.RequestException as e:
+        print(f"WARN: не удалось получить существующие заголовки: {e}")
+        return set()
+
+
 def upsert_items(items: list[dict]):
     if not items:
         return
@@ -223,6 +225,27 @@ def upsert_items(items: list[dict]):
         if r.status_code not in (200, 201, 204):
             print(f"WARN: upsert batch failed [{r.status_code}]: {r.text[:300]}")
 
+
+def cleanup_old_news():
+    """Удаляет новости старше RETENTION_DAYS -- держит таблицу компактной
+    (важно на лимите 500 MB бесплатного Supabase) и страницу свежей."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)).isoformat()
+    endpoint = f"{SUPABASE_URL}/rest/v1/news_items"
+    headers = {
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+    }
+    params = {"published_at": f"lt.{cutoff}"}
+    r = requests.delete(endpoint, headers=headers, params=params, timeout=30)
+    if r.status_code not in (200, 204):
+        print(f"WARN: cleanup failed [{r.status_code}]: {r.text[:300]}")
+    else:
+        print(f"Очистка: удалены новости старше {RETENTION_DAYS} дней")
+
+
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
 
 def main():
     require_env()
