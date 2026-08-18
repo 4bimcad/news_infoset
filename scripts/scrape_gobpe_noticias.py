@@ -16,6 +16,7 @@ scrape_gobpe_noticias.py
 """
 
 from datetime import datetime, timezone
+from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
@@ -49,6 +50,11 @@ def scrape_gobpe_noticias(url: str, source_id: str, category: str, max_items: in
             continue
 
         url_item = link_tag["href"]
+        # ссылки на живой странице бывают относительными ("/institucion/...")
+        # -- без этого браузер на infoset.org.pe достраивал бы их к своему
+        # домену вместо gob.pe, отсюда были 404
+        url_item = urljoin(url, url_item)
+
         if url_item in seen_urls:
             continue
         seen_urls.add(url_item)
@@ -66,7 +72,7 @@ def scrape_gobpe_noticias(url: str, source_id: str, category: str, max_items: in
                 pass
 
         excerpt = excerpt_tag.get_text(strip=True) if excerpt_tag else ""
-        image_url = img_tag["src"] if img_tag and img_tag.get("src") else None
+        image_url = urljoin(url, img_tag["src"]) if img_tag and img_tag.get("src") else None
 
         items.append(
             {
