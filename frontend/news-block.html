@@ -1,6 +1,7 @@
 <!--
   Новостной блок для infoset.org.pe в стиле ukr.net
-  (список: время + заголовок-ссылка + источник серым в скобках)
+  (список: дата + заголовок-ссылка + источник серым, без буллетов,
+  первые 5 всегда видны, остальное разворачивается по клику)
 
   Требует: Supabase JS client. Добавь перед </body>, если ещё нет:
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -26,8 +27,8 @@
     margin-top: 0;
   }
   #infoset-news ul {
-    list-style: disc;
-    padding-left: 1.2rem;
+    list-style: none;
+    padding-left: 0;
     margin: 0;
   }
   #infoset-news li {
@@ -41,20 +42,41 @@
   #infoset-news a:hover {
     text-decoration: underline;
   }
-  #infoset-news .news-time {
+  #infoset-news .news-date {
     color: #666;
     font-size: 0.85em;
-    margin-right: 0.3em;
+    margin-right: 0.4em;
+    white-space: nowrap;
   }
   #infoset-news .news-source {
     color: #888;
     font-size: 0.9em;
+  }
+  #infoset-news .news-toggle {
+    background: none;
+    border: none;
+    color: #1a0dab;
+    font-size: 0.9em;
+    cursor: pointer;
+    padding: 0.3rem 0 1rem;
+    display: inline-block;
+  }
+  #infoset-news .news-toggle:hover {
+    text-decoration: underline;
+  }
+  #infoset-news .news-more {
+    display: none;
+  }
+  #infoset-news .news-more.expanded {
+    display: block;
   }
 </style>
 
 <script>
   const SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"; // TODO: заменить
   const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";                // TODO: заменить
+
+  const VISIBLE_COUNT = 5; // сколько новостей видно сразу в каждой категории
 
   // Красивые названия источников (id из sources.yaml -> подпись на сайте)
   const SOURCE_LABELS = {
@@ -64,6 +86,8 @@
     mineria_pan_americana: "Minería Pan-Americana",
     gestion_economia: "Gestión",
     elcomercio_economia: "El Comercio",
+    minem_noticias: "MINEM",
+    minam_noticias: "MINAM",
     mining_com: "Mining.com",
     im_mining: "International Mining",
     emj: "E&MJ",
@@ -75,6 +99,8 @@
     internacional: "Internacional",
   };
 
+  const MONTHS_ES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
   async function loadNews() {
     const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -82,7 +108,7 @@
       .from("news_items")
       .select("title,url,published_at,category,source")
       .order("published_at", { ascending: false })
-      .limit(60);
+      .limit(300);
 
     if (error) {
       console.error("Error cargando noticias:", error);
@@ -102,36 +128,57 @@
     container.innerHTML = "";
 
     for (const [category, label] of Object.entries(CATEGORY_LABELS)) {
-      const categoryItems = (grouped[category] || []).slice(0, 12);
+      const categoryItems = grouped[category] || [];
       if (categoryItems.length === 0) continue;
 
       const heading = document.createElement("h3");
       heading.textContent = label;
       container.appendChild(heading);
 
+      const visibleItems = categoryItems.slice(0, VISIBLE_COUNT);
+      const restItems = categoryItems.slice(VISIBLE_COUNT);
+
       const ul = document.createElement("ul");
-      ul.innerHTML = categoryItems
-        .map((item) => {
-          const sourceLabel = SOURCE_LABELS[item.source] || item.source;
-          return `
-            <li>
-              <span class="news-time">${formatTime(item.published_at)}</span>
-              <a href="${item.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>
-              <span class="news-source">(${escapeHtml(sourceLabel)})</span>
-            </li>`;
-        })
-        .join("");
+      ul.innerHTML = visibleItems.map(renderItem).join("");
       container.appendChild(ul);
+
+      if (restItems.length > 0) {
+        const moreId = `news-more-${category}`;
+        const moreUl = document.createElement("ul");
+        moreUl.className = "news-more";
+        moreUl.id = moreId;
+        moreUl.innerHTML = restItems.map(renderItem).join("");
+        container.appendChild(moreUl);
+
+        const toggle = document.createElement("button");
+        toggle.className = "news-toggle";
+        toggle.type = "button";
+        toggle.textContent = `Mostrar todas las noticias (${restItems.length} más)`;
+        toggle.addEventListener("click", () => {
+          const isExpanded = moreUl.classList.toggle("expanded");
+          toggle.textContent = isExpanded
+            ? "Mostrar menos"
+            : `Mostrar todas las noticias (${restItems.length} más)`;
+        });
+        container.appendChild(toggle);
+      }
     }
   }
 
-  function formatTime(iso) {
+  function renderItem(item) {
+    const sourceLabel = SOURCE_LABELS[item.source] || item.source;
+    return `
+      <li>
+        <span class="news-date">${formatDate(item.published_at)}</span>
+        <a href="${item.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>
+        <span class="news-source">(${escapeHtml(sourceLabel)})</span>
+      </li>`;
+  }
+
+  function formatDate(iso) {
     if (!iso) return "";
     const d = new Date(iso);
-    const isToday = d.toDateString() === new Date().toDateString();
-    return isToday
-      ? d.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })
-      : d.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" });
+    return `${d.getDate()} ${MONTHS_ES[d.getMonth()]}`;
   }
 
   function escapeHtml(str) {

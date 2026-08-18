@@ -17,9 +17,11 @@ fetch_news.py
 
 import hashlib
 import os
+import re
 import sys
 import time
-from datetime import datetime, timezone
+import unicodedata
+from datetime import datetime, timedelta, timezone
 
 import feedparser
 import requests
@@ -32,6 +34,7 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 
 MAX_ITEMS_PER_SOURCE = 20  # не тащим всю историю фида, только свежее
+RETENTION_DAYS = 7         # старые новости чистим при каждом запуске
 
 
 def require_env():
@@ -40,7 +43,72 @@ def require_env():
         sys.exit(1)
 
 
-def parse_published(entry) -> str | None:
+def normalize_title(title: str) -> str:
+    """Нормализует заголовок для сравнения: убирает регистр, знаки
+    препинания, диакритику и лишние пробелы. Нужно, чтобы поймать
+    одну и ту же новость (пресс-релиз), опубликованную разными СМИ
+    под идентичным или почти идентичным заголовком."""
+    text = title.lower().strip()
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(c for c in text if not unicodedata.combining(c))
+    text = re.sub(r"[^\w\s]", "", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def fetch_recent_titles(days: int = 3) -> set[str]:
+    """Подтягивает нормализованные заголовки уже сохранённых новостей за
+    последние N дней -- нужно для дедупликации МЕЖДУ разными запусками
+    (не только внутри одного забега cron), если разные СМИ публикуют
+    один и тот же пресс-релиз не одновременно, а с разницей в час-два."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    endpoint = f"{SUPABASE_URL}/rest/v1/news_items"
+    headers = {
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+    }
+    params = {"select": "title", "published_at": f"gte.{cutoff}"}
+    try:
+        r = requests.get(endpoint, headers=headers, params=params, timeout=30)
+        r.raise_for_status()
+        return {normalize_title(row["title"]) for row in r.json()}
+    except requests.RequestException as e:
+        print(f"WARN: не удалось получить существующие заголовки: {e}")
+        return set()
+
+
+def deduplicate_items(items: list[dict], existing_titles: set[str] | None = None) -> list[dict]:
+    """Убирает дубли одной и той же новости с разных источников
+    (например, один пресс-релиз, синдицированный Energiminas и Proactivo).
+    Порядок источников в sources.yaml определяет приоритет -- оставляем
+    первую встреченную версию. existing_titles -- заголовки, уже
+    сохранённые в базе за последние дни (кросс-раневая защита)."""
+    seen_titles = set(existing_titles or set())
+    result = []
+    for item in items:
+        key = normalize_title(item["title"])
+        if key in seen_titles:
+            continue
+        seen_titles.add(key)
+        result.append(item)
+    return result
+
+
+def cleanup_old_news():
+    """Удаляет новости старше RETENTION_DAYS -- держит таблицу компактной
+    (важно на лимите 500 MB бесплатного Supabase) и страницу свежей."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)).isoformat()
+    endpoint = f"{SUPABASE_URL}/rest/v1/news_items"
+    headers = {
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+    }
+    params = {"published_at": f"lt.{cutoff}"}
+    r = requests.delete(endpoint, headers=headers, params=params, timeout=30)
+    if r.status_code not in (200, 204):
+        print(f"WARN: cleanup failed [{r.status_code}]: {r.text[:300]}")
+    else:
+        print(f"Очистка: удалены новости старше {RETENTION_DAYS} дней")
     for key in ("published_parsed", "updated_parsed"):
         val = entry.get(key)
         if val:
@@ -162,19 +230,26 @@ def main():
     with open("config/sources.yaml", "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
 
-    total = 0
+    all_items = []
     for src in cfg["sources"]:
         if not src.get("feed_url") and src.get("scraper") != "gobpe":
             continue
         try:
             items = fetch_source(src)
-            upsert_items(items)
             print(f"[OK] {src['id']}: {len(items)} записей")
-            total += len(items)
+            all_items.extend(items)
         except Exception as e:
             print(f"[ERROR] {src['id']}: {e}")
 
-    print(f"\nГотово. Обработано записей: {total}")
+    before = len(all_items)
+    existing_titles = fetch_recent_titles()
+    all_items = deduplicate_items(all_items, existing_titles)
+    print(f"\nДедупликация: {before} -> {len(all_items)} (убрано {before - len(all_items)} повторов)")
+
+    upsert_items(all_items)
+    cleanup_old_news()
+
+    print(f"Готово. Загружено записей: {len(all_items)}")
 
 
 if __name__ == "__main__":
