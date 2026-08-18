@@ -1,0 +1,116 @@
+<!--
+  Новостной блок для главной страницы infoset.org.pe
+  Требует: Bootstrap 5 (уже используется на сайте) и Supabase JS client.
+
+  Вставить перед </body>:
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  ВАЖНО: здесь используется anon key (публичный, безопасный для фронтенда,
+  доступен только на SELECT благодаря RLS-политике из sql/schema.sql).
+  service_role key НИКОГДА не должен попадать во фронтенд.
+-->
+
+<section id="infoset-news" class="py-5">
+  <div class="container">
+    <h2 class="mb-4">Actualidad minera</h2>
+    <div class="row g-4" id="news-columns">
+      <!-- колонки рендерятся через JS ниже -->
+    </div>
+  </div>
+</section>
+
+<style>
+  #infoset-news .news-column h5 {
+    border-bottom: 2px solid #dee2e6;
+    padding-bottom: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  #infoset-news .news-item {
+    display: block;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid #f0f0f0;
+    color: inherit;
+    text-decoration: none;
+  }
+  #infoset-news .news-item:hover {
+    color: #0d6efd;
+  }
+  #infoset-news .news-item small {
+    display: block;
+    color: #888;
+    margin-top: 2px;
+  }
+</style>
+
+<script>
+  const SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"; // TODO: заменить
+  const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";                // TODO: заменить
+
+  const CATEGORY_LABELS = {
+    noticias: "Noticias del sector",
+    normativa: "Normativa y regulación",
+    internacional: "Internacional",
+  };
+
+  async function loadNews() {
+    const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const { data, error } = await client
+      .from("news_items")
+      .select("title,url,excerpt,image_url,published_at,category,source")
+      .order("published_at", { ascending: false })
+      .limit(60);
+
+    if (error) {
+      console.error("Error cargando noticias:", error);
+      return;
+    }
+
+    renderColumns(data || []);
+  }
+
+  function renderColumns(items) {
+    const grouped = {};
+    for (const item of items) {
+      (grouped[item.category] ??= []).push(item);
+    }
+
+    const container = document.getElementById("news-columns");
+    container.innerHTML = "";
+
+    for (const [category, label] of Object.entries(CATEGORY_LABELS)) {
+      const columnItems = (grouped[category] || []).slice(0, 8);
+      if (columnItems.length === 0) continue;
+
+      const col = document.createElement("div");
+      col.className = "col-md-4 news-column";
+
+      const itemsHtml = columnItems
+        .map(
+          (item) => `
+            <a class="news-item" href="${item.url}" target="_blank" rel="noopener noreferrer">
+              ${escapeHtml(item.title)}
+              <small>${formatDate(item.published_at)} · ${escapeHtml(item.source)}</small>
+            </a>`
+        )
+        .join("");
+
+      col.innerHTML = `<h5>${label}</h5>${itemsHtml}`;
+      container.appendChild(col);
+    }
+  }
+
+  function formatDate(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    return d.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str || "";
+    return div.innerHTML;
+  }
+
+  document.addEventListener("DOMContentLoaded", loadNews);
+</script>

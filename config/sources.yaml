@@ -1,0 +1,96 @@
+# Конфиг источников новостей для infoset.org.pe
+#
+# feed_url: null  -> нужно определить через discover_feeds.py
+# feed_url: "..." -> подтверждённый рабочий RSS
+#
+# category:
+#   noticias    - общие новости сектора (проекты, инвестиции, производство)
+#   normativa   - законы, decretos, resoluciones (MINEM, SUNAT, SUNAFIL, OEFA)
+#   internacional - зарубежные отраслевые новости
+
+sources:
+  # ---------- ПЕРУ: отраслевые СМИ ----------
+  - id: rumbominero
+    name: "Rumbo Minero"
+    country: PE
+    category: noticias
+    homepage: "https://www.rumbominero.com"
+    feed_url: null   # кандидат: https://www.rumbominero.com/feed/
+
+  - id: energiminas
+    name: "Energiminas"
+    country: PE
+    category: noticias
+    homepage: "https://energiminas.com"
+    feed_url: null   # кандидат: https://energiminas.com/feed/
+
+  - id: proactivo
+    name: "Proactivo"
+    country: PE
+    category: noticias
+    homepage: "https://proactivo.com.pe"
+    feed_url: null   # кандидат: https://proactivo.com.pe/feed/
+
+  - id: mineria_pan_americana
+    name: "Minería Pan-Americana"
+    country: PE
+    category: noticias
+    homepage: "https://mineria-pa.com"
+    feed_url: null
+
+  # ---------- ПЕРУ: деловые/официальные СМИ (раздел минерка) ----------
+  - id: gestion_mineria
+    name: "Gestión - Minería"
+    country: PE
+    category: noticias
+    homepage: "https://gestion.pe/noticias/mineria/"
+    feed_url: null
+
+  - id: andina_economia
+    name: "Andina - Economía/Minería"
+    country: PE
+    category: noticias
+    homepage: "https://andina.pe/agencia/economia.aspx"
+    feed_url: null
+
+  # ---------- ПЕРУ: нормативка (самое ценное для аудитории INFOSET) ----------
+  - id: elperuano_normas
+    name: "El Peruano - Normas Legales"
+    country: PE
+    category: normativa
+    homepage: "https://busquedas.elperuano.pe/normaslegales/"
+    feed_url: null
+    note: >
+      Официальный вестник законов Перу. RSS маловероятен -
+      скорее всего потребуется отдельный точечный scraper
+      под структуру страницы (см. scripts/scrape_elperuano.py заглушку).
+    needs_custom_scraper: true
+
+  - id: minem_comunicados
+    name: "MINEM - Comunicados"
+    country: PE
+    category: normativa
+    homepage: "https://www.gob.pe/minem"
+    feed_url: null
+
+  # ---------- МЕЖДУНАРОДНЫЕ (подтверждённые RSS) ----------
+  - id: mining_com
+    name: "Mining.com"
+    country: INTL
+    category: internacional
+    homepage: "https://www.mining.com"
+    feed_url: "https://www.mining.com/feed/"
+
+  - id: im_mining
+    name: "International Mining"
+    country: INTL
+    category: internacional
+    homepage: "https://im-mining.com"
+    feed_url: "https://im-mining.com/feed"
+
+  - id: emj
+    name: "Engineering & Mining Journal"
+    country: INTL
+    category: internacional
+    homepage: "https://e-mj.com"
+    feed_url: "https://e-mj.com/feed"
