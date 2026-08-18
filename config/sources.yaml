@@ -15,63 +15,99 @@ sources:
     country: PE
     category: noticias
     homepage: "https://www.rumbominero.com"
-    feed_url: null   # кандидат: https://www.rumbominero.com/feed/
+    feed_url: null   # автопроверка не нашла (сайт может блокировать бот-запросы)
+    note: >
+      Проверь вручную в своём браузере: https://www.rumbominero.com/feed/
+      Если открывается XML — впиши этот адрес сюда.
 
   - id: energiminas
     name: "Energiminas"
     country: PE
     category: noticias
     homepage: "https://energiminas.com"
-    feed_url: null   # кандидат: https://energiminas.com/feed/
+    feed_url: "https://energiminas.com/feed/"
 
   - id: proactivo
     name: "Proactivo"
     country: PE
     category: noticias
     homepage: "https://proactivo.com.pe"
-    feed_url: null   # кандидат: https://proactivo.com.pe/feed/
+    feed_url: "https://proactivo.com.pe/feed/"
 
   - id: mineria_pan_americana
     name: "Minería Pan-Americana"
     country: PE
     category: noticias
     homepage: "https://mineria-pa.com"
-    feed_url: null
+    feed_url: "https://mineria-pa.com/feed/"
 
-  # ---------- ПЕРУ: деловые/официальные СМИ (раздел минерка) ----------
-  - id: gestion_mineria
-    name: "Gestión - Minería"
+  # ---------- ПЕРУ: широкие деловые СМИ, отфильтрованные по ключевым словам ----------
+  # Это фиды ВСЕЙ категории "Экономика" (курс доллара, потребление, политика).
+  # filter_keywords оставляет только пункты, где заголовок/описание
+  # содержат одно из этих слов -- иначе колонку зальёт нерелевантным потоком.
+  - id: gestion_economia
+    name: "Gestión - Economía (фильтр: минерка)"
     country: PE
     category: noticias
-    homepage: "https://gestion.pe/noticias/mineria/"
-    feed_url: null
+    homepage: "https://gestion.pe/rss/"
+    feed_url: "https://gestion.pe/arc/outboundfeeds/rss/category/economia/?outputType=xml"
+    filter_keywords:
+      - minería
+      - minera
+      - minero
+      - MINEM
+      - cobre
+      - oro
+      - concesión minera
+      - Buenaventura
+      - Southern Copper
+      - Antamina
+      - Las Bambas
+      - Cerro Verde
 
-  - id: andina_economia
-    name: "Andina - Economía/Minería"
+  - id: elcomercio_economia
+    name: "El Comercio - Economía (фильтр: минерка)"
     country: PE
     category: noticias
-    homepage: "https://andina.pe/agencia/economia.aspx"
-    feed_url: null
+    homepage: "https://elcomercio.pe"
+    feed_url: "https://elcomercio.pe/arc/outboundfeeds/rss/category/economia/?outputType=xml"
+    filter_keywords:
+      - minería
+      - minera
+      - minero
+      - MINEM
+      - cobre
+      - oro
+      - concesión minera
+      - Buenaventura
+      - Southern Copper
+      - Antamina
+      - Las Bambas
+      - Cerro Verde
 
   # ---------- ПЕРУ: нормативка (самое ценное для аудитории INFOSET) ----------
+  # Это страницы ПОИСКА, не RSS -- нужен отдельный точечный scraper.
+  # Пока оставляем как заметку на следующий этап.
   - id: elperuano_normas
     name: "El Peruano - Normas Legales"
     country: PE
     category: normativa
-    homepage: "https://busquedas.elperuano.pe/normaslegales/"
+    homepage: "https://diariooficial.elperuano.pe/Normas"
     feed_url: null
     note: >
-      Официальный вестник законов Перу. RSS маловероятен -
-      скорее всего потребуется отдельный точечный scraper
-      под структуру страницы (см. scripts/scrape_elperuano.py заглушку).
+      Официальный вестник законов Перу. Это страница поиска (HTML), не RSS.
+      Нужен отдельный scraper под структуру этой страницы -- следующий этап.
     needs_custom_scraper: true
 
   - id: minem_comunicados
     name: "MINEM - Comunicados"
     country: PE
     category: normativa
-    homepage: "https://www.gob.pe/minem"
+    homepage: "https://www.gob.pe/fr/busquedas?contenido%5B%5D=noticias&institucion=minem"
     feed_url: null
+    note: >
+      Тоже страница поиска (HTML), не RSS. Нужен отдельный scraper.
+    needs_custom_scraper: true
 
   # ---------- МЕЖДУНАРОДНЫЕ (подтверждённые RSS) ----------
   - id: mining_com
