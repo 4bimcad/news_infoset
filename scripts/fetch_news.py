@@ -229,7 +229,10 @@ def fetch_recent_titles(days: int = 3) -> set[str]:
 def upsert_items(items: list[dict]):
     if not items:
         return
-    endpoint = f"{SUPABASE_URL}/rest/v1/news_items"
+    # on_conflict=url — обязателен для настоящего upsert через PostgREST;
+    # без него Prefer: resolution=ignore-duplicates не работает и любая
+    # попытка вставить уже существующий url падает с ошибкой 409.
+    endpoint = f"{SUPABASE_URL}/rest/v1/news_items?on_conflict=url"
     headers = {
         "apikey": SUPABASE_SERVICE_KEY,
         "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
