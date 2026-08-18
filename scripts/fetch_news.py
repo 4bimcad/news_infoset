@@ -22,6 +22,7 @@ import sys
 import time
 import unicodedata
 from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 
 import feedparser
 import requests
@@ -68,19 +69,29 @@ def matches_keywords(title: str, excerpt: str, keywords: list[str]) -> bool:
     return any(kw.lower() in haystack for kw in keywords)
 
 
+TITLE_SIMILARITY_THRESHOLD = 0.85  # выше -- дубль (одна новость от разных СМИ)
+
+
+def titles_similar(a: str, b: str) -> bool:
+    return SequenceMatcher(None, a, b).ratio() >= TITLE_SIMILARITY_THRESHOLD
+
+
 def deduplicate_items(items: list[dict], existing_titles: set[str] | None = None) -> list[dict]:
     """Убирает дубли одной и той же новости с разных источников
-    (например, один пресс-релиз, синдицированный Energiminas и Proactivo).
+    (например, один пресс-релиз, синдицированный Energiminas и El Comercio,
+    иногда с небольшими отличиями в формулировке -- "US$ 40.000 millones"
+    vs "US$40.000 millones"). Сравнение НЕЧЁТКОЕ (similarity ratio),
+    а не точное совпадение строк -- иначе такие варианты проскакивают.
     Порядок источников в sources.yaml определяет приоритет -- оставляем
     первую встреченную версию. existing_titles -- заголовки, уже
     сохранённые в базе за последние дни (кросс-раневая защита)."""
-    seen_titles = set(existing_titles or set())
+    seen_titles = list(existing_titles or [])
     result = []
     for item in items:
         key = normalize_title(item["title"])
-        if key in seen_titles:
+        if any(titles_similar(key, seen) for seen in seen_titles):
             continue
-        seen_titles.add(key)
+        seen_titles.append(key)
         result.append(item)
     return result
 
