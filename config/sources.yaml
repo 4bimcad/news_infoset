@@ -15,10 +15,7 @@ sources:
     country: PE
     category: noticias
     homepage: "https://www.rumbominero.com"
-    feed_url: null   # автопроверка не нашла (сайт может блокировать бот-запросы)
-    note: >
-      Проверь вручную в своём браузере: https://www.rumbominero.com/feed/
-      Если открывается XML — впиши этот адрес сюда.
+    feed_url: "https://www.rumbominero.com/category/peru/noticias/mineria/feed/"
 
   - id: energiminas
     name: "Energiminas"
@@ -43,8 +40,9 @@ sources:
 
   # ---------- ПЕРУ: широкие деловые СМИ, отфильтрованные по ключевым словам ----------
   # Это фиды ВСЕЙ категории "Экономика" (курс доллара, потребление, политика).
-  # filter_keywords оставляет только пункты, где заголовок/описание
-  # содержат одно из этих слов -- иначе колонку зальёт нерелевантным потоком.
+  # filter_keywords оставляет только пункты с точными отраслевыми терминами --
+  # НЕ используем одиночные "oro"/"cobre" (ловят ювелирку, кулинарию, украшения),
+  # только сочетания, однозначно указывающие на горную отрасль.
   - id: gestion_economia
     name: "Gestión - Economía (фильтр: минерка)"
     country: PE
@@ -56,14 +54,21 @@ sources:
       - minera
       - minero
       - MINEM
-      - cobre
-      - oro
+      - INGEMMET
+      - SUNAFIL
+      - OEFA
       - concesión minera
+      - proyecto minero
+      - producción minera
+      - precio del cobre
+      - precio del oro
       - Buenaventura
       - Southern Copper
       - Antamina
       - Las Bambas
       - Cerro Verde
+      - Minsur
+      - Chinalco
 
   - id: elcomercio_economia
     name: "El Comercio - Economía (фильтр: минерка)"
@@ -76,38 +81,72 @@ sources:
       - minera
       - minero
       - MINEM
-      - cobre
-      - oro
+      - INGEMMET
+      - SUNAFIL
+      - OEFA
       - concesión minera
+      - proyecto minero
+      - producción minera
+      - precio del cobre
+      - precio del oro
       - Buenaventura
       - Southern Copper
       - Antamina
       - Las Bambas
       - Cerro Verde
+      - Minsur
+      - Chinalco
 
   # ---------- ПЕРУ: нормативка (самое ценное для аудитории INFOSET) ----------
-  # Это страницы ПОИСКА, не RSS -- нужен отдельный точечный scraper.
-  # Пока оставляем как заметку на следующий этап.
+  # Это страницы поиска / списки на gob.pe -- не RSS, к тому же сайт блокирует
+  # автоматические запросы (418 error). Нужен HTML от пользователя вручную,
+  # чтобы написать точный scraper под структуру страницы.
   - id: elperuano_normas
     name: "El Peruano - Normas Legales"
     country: PE
     category: normativa
     homepage: "https://diariooficial.elperuano.pe/Normas"
     feed_url: null
-    note: >
-      Официальный вестник законов Перу. Это страница поиска (HTML), не RSS.
-      Нужен отдельный scraper под структуру этой страницы -- следующий этап.
     needs_custom_scraper: true
 
-  - id: minem_comunicados
-    name: "MINEM - Comunicados"
+  - id: minem_noticias
+    name: "MINEM - Noticias"
     country: PE
     category: normativa
-    homepage: "https://www.gob.pe/fr/busquedas?contenido%5B%5D=noticias&institucion=minem"
+    homepage: "https://www.gob.pe/institucion/minem/noticias"
     feed_url: null
-    note: >
-      Тоже страница поиска (HTML), не RSS. Нужен отдельный scraper.
-    needs_custom_scraper: true
+    scraper: gobpe
+    # MINEM публикует и про минерку, и про энергетику/топливо -- фильтруем
+    filter_keywords:
+      - minería
+      - minera
+      - minero
+      - mineras
+      - concesión
+      - formalización minera
+      - INGEMMET
+      - producción minera
+      - exportaciones mineras
+      - inversión minera
+
+  - id: minam_noticias
+    name: "MINAM - Noticias"
+    country: PE
+    category: normativa
+    homepage: "https://www.gob.pe/institucion/minam/noticias"
+    feed_url: null
+    scraper: gobpe
+    # MINAM публикует про экологию в целом -- фильтруем на пересечение с минеркой
+    filter_keywords:
+      - minería
+      - minera
+      - minero
+      - mineras
+      - OEFA
+      - pasivo ambiental
+      - fiscalización ambiental minera
+      - relaves
+      - concesión minera
 
   # ---------- МЕЖДУНАРОДНЫЕ (подтверждённые RSS) ----------
   - id: mining_com
@@ -116,6 +155,7 @@ sources:
     category: internacional
     homepage: "https://www.mining.com"
     feed_url: "https://www.mining.com/feed/"
+    lang: en
 
   - id: im_mining
     name: "International Mining"
@@ -123,6 +163,7 @@ sources:
     category: internacional
     homepage: "https://im-mining.com"
     feed_url: "https://im-mining.com/feed"
+    lang: en
 
   - id: emj
     name: "Engineering & Mining Journal"
@@ -130,3 +171,4 @@ sources:
     category: internacional
     homepage: "https://e-mj.com"
     feed_url: "https://e-mj.com/feed"
+    lang: en

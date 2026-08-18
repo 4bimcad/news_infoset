@@ -24,6 +24,9 @@ from datetime import datetime, timezone
 import feedparser
 import requests
 import yaml
+from deep_translator import GoogleTranslator
+
+from scrape_gobpe_noticias import scrape_gobpe_noticias
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
@@ -69,7 +72,36 @@ def clean_excerpt(entry) -> str:
     return text[:300]
 
 
+def translate_to_spanish(text: str) -> str:
+    """Переводит текст на испанский через бесплатный Google Translate
+    (без API-ключа, через deep-translator). Если сервис недоступен --
+    возвращает оригинал, чтобы не терять новость целиком."""
+    if not text:
+        return text
+    try:
+        return GoogleTranslator(source="auto", target="es").translate(text)
+    except Exception as e:
+        print(f"WARN: translation failed, keeping original: {e}")
+        return text
+
+
 def fetch_source(src: dict) -> list[dict]:
+    keywords = src.get("filter_keywords")
+    needs_translation = src.get("lang") == "en"
+
+    # --- источники через scraper (не RSS) ---
+    if src.get("scraper") == "gobpe":
+        raw_items = scrape_gobpe_noticias(
+            src["homepage"], source_id=src["id"], category=src["category"]
+        )
+        items = []
+        for item in raw_items:
+            if keywords and not matches_keywords(item["title"], item["excerpt"], keywords):
+                continue
+            items.append(item)
+        return items
+
+    # --- источники через RSS ---
     if not src.get("feed_url"):
         return []
 
@@ -79,13 +111,24 @@ def fetch_source(src: dict) -> list[dict]:
         url = entry.get("link")
         if not url:
             continue
+
+        title = entry.get("title", "").strip()
+        excerpt = clean_excerpt(entry)
+
+        if keywords and not matches_keywords(title, excerpt, keywords):
+            continue  # не про минерку — пропускаем
+
+        if needs_translation:
+            title = translate_to_spanish(title)
+            excerpt = translate_to_spanish(excerpt)
+
         items.append(
             {
                 "source": src["id"],
                 "category": src["category"],
-                "title": entry.get("title", "").strip(),
+                "title": title,
                 "url": url,
-                "excerpt": clean_excerpt(entry),
+                "excerpt": excerpt,
                 "image_url": extract_image(entry),
                 "published_at": parse_published(entry),
             }
@@ -121,7 +164,7 @@ def main():
 
     total = 0
     for src in cfg["sources"]:
-        if not src.get("feed_url"):
+        if not src.get("feed_url") and src.get("scraper") != "gobpe":
             continue
         try:
             items = fetch_source(src)

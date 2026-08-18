@@ -1,0 +1,144 @@
+<!--
+  Новостной блок для infoset.org.pe в стиле ukr.net
+  (список: время + заголовок-ссылка + источник серым в скобках)
+
+  Требует: Supabase JS client. Добавь перед </body>, если ещё нет:
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  Это НЕ iframe -- код вставляется прямо в HTML страницы, поэтому
+  наследует шрифты и стили твоего сайта, как обычный блок контента.
+-->
+
+<section id="infoset-news" class="py-5">
+  <div class="container" style="max-width: 720px;">
+    <div id="news-list"><!-- рендерится через JS ниже --></div>
+  </div>
+</section>
+
+<style>
+  #infoset-news h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    text-decoration: underline;
+    margin: 1.5rem 0 0.75rem;
+  }
+  #infoset-news h3:first-child {
+    margin-top: 0;
+  }
+  #infoset-news ul {
+    list-style: disc;
+    padding-left: 1.2rem;
+    margin: 0;
+  }
+  #infoset-news li {
+    margin-bottom: 0.55rem;
+    line-height: 1.35;
+  }
+  #infoset-news a {
+    color: #1a0dab;
+    text-decoration: none;
+  }
+  #infoset-news a:hover {
+    text-decoration: underline;
+  }
+  #infoset-news .news-time {
+    color: #666;
+    font-size: 0.85em;
+    margin-right: 0.3em;
+  }
+  #infoset-news .news-source {
+    color: #888;
+    font-size: 0.9em;
+  }
+</style>
+
+<script>
+  const SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"; // TODO: заменить
+  const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";                // TODO: заменить
+
+  // Красивые названия источников (id из sources.yaml -> подпись на сайте)
+  const SOURCE_LABELS = {
+    rumbominero: "Rumbo Minero",
+    energiminas: "Energiminas",
+    proactivo: "Proactivo",
+    mineria_pan_americana: "Minería Pan-Americana",
+    gestion_economia: "Gestión",
+    elcomercio_economia: "El Comercio",
+    mining_com: "Mining.com",
+    im_mining: "International Mining",
+    emj: "E&MJ",
+  };
+
+  const CATEGORY_LABELS = {
+    noticias: "Noticias del sector",
+    normativa: "Normativa y regulación",
+    internacional: "Internacional",
+  };
+
+  async function loadNews() {
+    const client = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const { data, error } = await client
+      .from("news_items")
+      .select("title,url,published_at,category,source")
+      .order("published_at", { ascending: false })
+      .limit(60);
+
+    if (error) {
+      console.error("Error cargando noticias:", error);
+      return;
+    }
+
+    renderList(data || []);
+  }
+
+  function renderList(items) {
+    const grouped = {};
+    for (const item of items) {
+      (grouped[item.category] ??= []).push(item);
+    }
+
+    const container = document.getElementById("news-list");
+    container.innerHTML = "";
+
+    for (const [category, label] of Object.entries(CATEGORY_LABELS)) {
+      const categoryItems = (grouped[category] || []).slice(0, 12);
+      if (categoryItems.length === 0) continue;
+
+      const heading = document.createElement("h3");
+      heading.textContent = label;
+      container.appendChild(heading);
+
+      const ul = document.createElement("ul");
+      ul.innerHTML = categoryItems
+        .map((item) => {
+          const sourceLabel = SOURCE_LABELS[item.source] || item.source;
+          return `
+            <li>
+              <span class="news-time">${formatTime(item.published_at)}</span>
+              <a href="${item.url}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.title)}</a>
+              <span class="news-source">(${escapeHtml(sourceLabel)})</span>
+            </li>`;
+        })
+        .join("");
+      container.appendChild(ul);
+    }
+  }
+
+  function formatTime(iso) {
+    if (!iso) return "";
+    const d = new Date(iso);
+    const isToday = d.toDateString() === new Date().toDateString();
+    return isToday
+      ? d.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" });
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str || "";
+    return div.innerHTML;
+  }
+
+  document.addEventListener("DOMContentLoaded", loadNews);
+</script>
