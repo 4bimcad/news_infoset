@@ -130,6 +130,22 @@ def translate_to_spanish(text: str) -> str:
         return text
 
 
+def extract_dynamic_source(entry, fallback_id: str) -> tuple[str, str]:
+    """Для Google News (и похожих агрегаторов): достаёт реальное издание
+    из тега <source> и убирает суффикс ' - Издание' из заголовка,
+    который Google добавляет сам. Возвращает (source_label, чистый title)."""
+    title = entry.get("title", "").strip()
+    source_label = fallback_id
+
+    src = entry.get("source")
+    if src and isinstance(src, dict) and src.get("title"):
+        source_label = src["title"].strip()
+        suffix = f" - {source_label}"
+        if title.endswith(suffix):
+            title = title[: -len(suffix)].strip()
+    return source_label, title
+
+
 def fetch_source(src: dict) -> list[dict]:
     keywords = src.get("filter_keywords")
     needs_translation = src.get("lang") == "en"
@@ -159,6 +175,10 @@ def fetch_source(src: dict) -> list[dict]:
 
         title = entry.get("title", "").strip()
         excerpt = clean_excerpt(entry)
+        source_id = src["id"]
+
+        if src.get("dynamic_source"):
+            source_id, title = extract_dynamic_source(entry, fallback_id=src["id"])
 
         if keywords and not matches_keywords(title, excerpt, keywords):
             continue  # не про минерку — пропускаем
@@ -169,7 +189,7 @@ def fetch_source(src: dict) -> list[dict]:
 
         items.append(
             {
-                "source": src["id"],
+                "source": source_id,
                 "category": src["category"],
                 "title": title,
                 "url": url,

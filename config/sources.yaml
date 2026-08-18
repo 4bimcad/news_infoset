@@ -31,6 +31,26 @@ sources:
     homepage: "https://proactivo.com.pe"
     feed_url: "https://proactivo.com.pe/feed/"
 
+  # ---------- ПЕРУ: Google News (агрегатор -- ловит СМИ, которых нет в списке) ----------
+  # Официально Google это не документирует, но формат стабилен и бесплатен,
+  # без API-ключа. source в каждой новости будет РЕАЛЬНЫМ издательством
+  # (La República, Perú21, RPP и т.д.), а не фиксированным id -- см.
+  # dynamic_source в fetch_news.py.
+  - id: google_news_mineria
+    name: "Google News - minería Perú"
+    country: PE
+    category: noticias
+    homepage: "https://news.google.com/rss/search?q=%22miner%C3%ADa+Per%C3%BA%22&hl=es-419&gl=PE&ceid=PE:es"
+    feed_url: "https://news.google.com/rss/search?q=%22miner%C3%ADa+Per%C3%BA%22&hl=es-419&gl=PE&ceid=PE:es"
+    dynamic_source: true
+    filter_keywords:
+      - minería
+      - minera
+      - minero
+      - mineras
+      - MINEM
+      - INGEMMET
+
   - id: mineria_pan_americana
     name: "Minería Pan-Americana"
     country: PE
